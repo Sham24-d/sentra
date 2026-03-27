@@ -1,0 +1,6 @@
+opencv-python
+ultralytics
+requests
+playsound==1.2.2
+mediapipe
+flask
