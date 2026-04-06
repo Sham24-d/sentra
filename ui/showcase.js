@@ -79,7 +79,7 @@ const applyStatus = (status) => {
     });
 
     if (heroStatus) {
-        heroStatus.textContent = status.system_status || "Monitoring";
+        heroStatus.textContent = status.alarm_status || status.system_status || "Monitoring";
     }
 
     if (heroPeople) {
@@ -87,14 +87,7 @@ const applyStatus = (status) => {
     }
 
     if (heroThreat) {
-        const activeThreat = status.weapons > 0
-            ? "Weapon detected"
-            : status.throwing
-                ? "Throwing alert"
-                : status.trespass > 0
-                    ? "Restricted breach"
-                    : "No threat";
-        heroThreat.textContent = activeThreat;
+        heroThreat.textContent = status.active_threat || "No confirmed danger";
     }
 
     if (overlayTop) {
@@ -111,15 +104,19 @@ const applyStatus = (status) => {
 const refreshStatus = async () => {
     try {
         const response = await fetch("/api/status", { cache: "no-store" });
+        const status = await response.json();
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            applyStatus(status);
+            throw new Error(status.active_threat || `HTTP ${response.status}`);
         }
 
-        const status = await response.json();
         applyStatus(status);
     } catch (error) {
         if (heroStatus) {
             heroStatus.textContent = "Live link reconnecting";
+        }
+        if (heroThreat) {
+            heroThreat.textContent = error.message || "Live system unavailable";
         }
     }
 };

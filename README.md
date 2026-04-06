@@ -20,3 +20,5 @@ Sentra stands for a modern city-safety platform that combines behavioral analyti
 ```
 
 Then open `http://127.0.0.1:5000`.
+
+The runtime settings are stored in `sentra_settings.json`.

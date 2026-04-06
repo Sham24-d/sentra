@@ -1,43 +1,84 @@
+from pathlib import Path
+
 try:
-    import mediapipe as mp
+    from ultralytics import YOLO
 except ImportError:
-    mp = None
+    YOLO = None
 
 
-def _build_pose():
-    if mp is None:
-        return None, None
+BASE_DIR = Path(__file__).resolve().parent.parent
+POSE_MODEL_PATH = BASE_DIR / "core" / "yolov8n-pose.pt"
+LEFT_SHOULDER = 5
+RIGHT_SHOULDER = 6
+LEFT_ELBOW = 7
+RIGHT_ELBOW = 8
+LEFT_WRIST = 9
+RIGHT_WRIST = 10
+MIN_KEYPOINT_CONFIDENCE = 0.45
+WRIST_RAISE_DELTA = 35
+ELBOW_RAISE_DELTA = 16
+ARM_EXTENSION_DELTA = 28
 
-    pose_module = getattr(getattr(mp, "solutions", None), "pose", None)
-    if pose_module is None:
-        return None, None
 
-    pose_instance = pose_module.Pose(
-        min_detection_confidence=0.5,
-        min_tracking_confidence=0.5,
-    )
-    return pose_instance, pose_module
+def _load_pose_model():
+    if YOLO is None or not POSE_MODEL_PATH.exists():
+        return None
+    return YOLO(str(POSE_MODEL_PATH))
 
 
-_pose, _pose_module = _build_pose()
+_pose_model = _load_pose_model()
+
+
+def _valid_point(point, confidence):
+    return confidence >= MIN_KEYPOINT_CONFIDENCE
+
+
+def _arm_looks_like_throw(shoulder, elbow, wrist, shoulder_conf, elbow_conf, wrist_conf):
+    if not (
+        _valid_point(shoulder, shoulder_conf)
+        and _valid_point(elbow, elbow_conf)
+        and _valid_point(wrist, wrist_conf)
+    ):
+        return False
+
+    wrist_above_shoulder = (shoulder[1] - wrist[1]) > WRIST_RAISE_DELTA
+    elbow_above_shoulder = (shoulder[1] - elbow[1]) > ELBOW_RAISE_DELTA
+    arm_extended = abs(wrist[0] - shoulder[0]) > ARM_EXTENSION_DELTA
+    return wrist_above_shoulder and elbow_above_shoulder and arm_extended
 
 
 def detect_throw(frame):
-    if _pose is None or _pose_module is None or frame is None:
+    if _pose_model is None or frame is None:
         return False
 
-    rgb_frame = frame[:, :, ::-1]
-    results = _pose.process(rgb_frame)
-    if not results.pose_landmarks:
-        return False
+    results = _pose_model.predict(frame, conf=0.35, imgsz=320, verbose=False)
+    for result in results:
+        keypoints = getattr(result, "keypoints", None)
+        if keypoints is None or keypoints.xy is None or keypoints.conf is None:
+            continue
 
-    landmarks = results.pose_landmarks.landmark
-    left_shoulder = landmarks[_pose_module.PoseLandmark.LEFT_SHOULDER]
-    right_shoulder = landmarks[_pose_module.PoseLandmark.RIGHT_SHOULDER]
-    left_wrist = landmarks[_pose_module.PoseLandmark.LEFT_WRIST]
-    right_wrist = landmarks[_pose_module.PoseLandmark.RIGHT_WRIST]
+        xy_points = keypoints.xy.cpu().tolist()
+        conf_points = keypoints.conf.cpu().tolist()
 
-    return (
-        left_wrist.y < left_shoulder.y - 0.08
-        or right_wrist.y < right_shoulder.y - 0.08
-    )
+        for points, confidences in zip(xy_points, conf_points):
+            if _arm_looks_like_throw(
+                points[LEFT_SHOULDER],
+                points[LEFT_ELBOW],
+                points[LEFT_WRIST],
+                confidences[LEFT_SHOULDER],
+                confidences[LEFT_ELBOW],
+                confidences[LEFT_WRIST],
+            ):
+                return True
+
+            if _arm_looks_like_throw(
+                points[RIGHT_SHOULDER],
+                points[RIGHT_ELBOW],
+                points[RIGHT_WRIST],
+                confidences[RIGHT_SHOULDER],
+                confidences[RIGHT_ELBOW],
+                confidences[RIGHT_WRIST],
+            ):
+                return True
+
+    return False

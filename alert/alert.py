@@ -1,38 +1,56 @@
+import threading
 import time
 
 try:
-    import requests # pyright: ignore[reportMissingModuleSource]
+    import winsound
 except ImportError:
-    requests = None
-
-try:
-    from playsound import playsound
-except ImportError:
-    playsound = None
+    winsound = None
 
 
-last_alert_time = 0
+_alarm_thread = None
+_alarm_stop_event = threading.Event()
+_alarm_lock = threading.Lock()
 
 
-def play_alarm():
-    global last_alert_time
+def _alarm_loop():
+    while not _alarm_stop_event.is_set():
+        if winsound is not None:
+            try:
+                winsound.Beep(1800, 350)
+                if _alarm_stop_event.is_set():
+                    break
+                winsound.Beep(1400, 250)
+            except RuntimeError:
+                time.sleep(0.2)
+        else:
+            time.sleep(0.5)
 
-    if time.time() - last_alert_time > 5:
-        try:
-            if playsound is None:
-                raise RuntimeError("playsound is not installed")
-            playsound("alarm.mp3")
-        except Exception as exc:
-            print(f"Alarm playback failed: {exc}")
-        last_alert_time = time.time()
+        time.sleep(0.1)
 
 
-def send_mobile_alert():
-    url = "https://maker.ifttt.com/trigger/alert/with/key/YOUR_IFTTT_KEY"
+def start_alarm():
+    global _alarm_thread
 
-    try:
-        if requests is None:
-            raise RuntimeError("requests is not installed")
-        requests.get(url, timeout=5)
-    except Exception as exc:
-        print(f"Mobile alert failed: {exc}")
+    with _alarm_lock:
+        if _alarm_thread is not None and _alarm_thread.is_alive():
+            return
+
+        _alarm_stop_event.clear()
+        _alarm_thread = threading.Thread(target=_alarm_loop, daemon=True)
+        _alarm_thread.start()
+
+
+def stop_alarm():
+    global _alarm_thread
+
+    with _alarm_lock:
+        thread = _alarm_thread
+        _alarm_stop_event.set()
+        _alarm_thread = None
+
+    if thread is not None and thread.is_alive():
+        thread.join(timeout=0.6)
+
+
+def is_alarm_active():
+    return _alarm_thread is not None and _alarm_thread.is_alive()
