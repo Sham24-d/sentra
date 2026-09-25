@@ -1,0 +1,70 @@
+# SENTRA - Behavioral Risk Intelligence System Configuration
+
+system:
+  name: "SENTRA"
+  version: "1.0.0"
+  team: "NextPhase"
+
+camera:
+  source: 0                 # 0 for webcam, or path to MP4 video
+  width: 1280
+  height: 720
+  fps_limit: 30
+  frame_skip: 1             # 1 = process every frame, 2 = process every 2nd frame
+
+models:
+  person_model_path: "yolov8n.pt"
+  weapon_model_path: "models/hf_firearm/weights/best.pt"
+  device: "cpu"             # 'cpu' or '0' (for GPU)
+  person_confidence: 0.40
+  weapon_confidence: 0.35
+  normal_obj_confidence: 0.35
+
+detection:
+  # COCO class IDs considered safe everyday items
+  # 67: cell phone, 24: backpack, 26: handbag, 39: bottle, 41: cup, 28: suitcase, 73: book
+  normal_object_classes: [67, 24, 26, 39, 41, 28, 73]
+  # COCO class IDs considered fallback weapons if custom model not active
+  # 43: knife, 76: scissors
+  fallback_weapon_classes: [43, 76]
+
+tracking:
+  tracker_type: "bytetrack.yaml"
+  track_buffer: 30
+  match_thresh: 0.7
+  history_length: 30        # Trajectory trail frames
+
+behavior:
+  # Default restricted zone polygon points (in pixel coordinates [x, y] for 1280x720)
+  restricted_zone:
+    - [100, 150]
+    - [550, 150]
+    - [550, 600]
+    - [100, 600]
+  loiter_time_threshold: 10.0   # seconds in zone before loiter alert
+  crowd_threshold: 4            # number of people to trigger crowd alert
+  speed_threshold: 140.0        # pixels per second to classify as running
+
+risk:
+  weights:
+    weapon_firearm: 60
+    weapon_knife: 45
+    intrusion: 30
+    loitering: 15
+    running: 15
+    crowd: 10
+  synergies:
+    weapon_and_intrusion: 25   # Bonus risk if armed person breaches zone
+  thresholds:
+    medium: 30
+    high: 60
+    critical: 80
+
+alerts:
+  sound_enabled: false
+  sound_file: null
+  cooldown_seconds: 5.0
+  evidence_dir: "evidence"
+
+database:
+  db_path: "sentra.db"
